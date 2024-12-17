@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calculadora ZS Urbanismo</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+
+</head>
+
+<body class="bg-gray-200 px-24 py-4">
+    <div class="container mx-auto ">
+        <h1 class="text-2xl font-bold text-center mb-4">Calculadora de Valor Presente ZS</h1>
+        <div class="grid md:grid-cols-2 gap-4">
+            <div id="coluna1">
+                <div id="series-container">
+                    <div class="mb-4 p-4 bg-white rounded shadow">
+                        <label class="mb-2 w-1/2">Valor do Lote (Tabela)</label>
+                        <input id="valorMeta" type="number" class="w-1/2 mb-2 p-0 border rounded">
+                    </div>
+                    <!-- As séries de pagamento aparecem aqui -->
+                </div>
+                <button id="add-series" class="bg-blue-500 text-white px-4 py-2 rounded mt-0">
+                    Adicionar Série
+                </button>
+                <button id="calculate" class="bg-green-500 text-white px-4 py-2 rounded mt-0">
+                    Calcular Valor Presente Total
+                </button>
+            </div>
+
+            <div id="coluna2">
+                <div id="result" class="mb-4 p-4 bg-white rounded shadow hidden">
+                    <h2 class="text-lg font-bold">Valor Presente Total: <span id="total-value"></span></h2>
+                </div>
+                <div id="table-container" class="mt-4 p-4 bg-white rounded shadow hidden">
+                    <h2 class="text-lg font-bold">Fluxo de Pagamentos Mensais</h2>
+                    <table class="min-w-full text-center">
+                        <thead id="table-header">
+                            <tr>
+                                <th class="border px-4 py-2">Referência</th>
+                                <th class="border px-4 py-2">Mês</th>
+                                <th class="border px-4 py-2">Parcela Mensal (R$)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="table-body">
+                            <!-- As linhas da tabela serão geradas dinamicamente aqui -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <script>
+        document.getElementById('add-series').addEventListener('click', addNewSeries);
+        document.getElementById('calculate').addEventListener('click', calculatePresentValue);
+
+        let seriesCount = 0;
+
+        // Função para adicionar uma série de pagamentos
+        function addNewSeries() {
+            seriesCount++;
+            const container = document.getElementById('series-container');
+
+            const newSeries = document.createElement('div');
+            newSeries.classList.add('series-item', 'mb-4', 'px-4', 'py-2', 'bg-white', 'rounded', 'shadow');
+            newSeries.innerHTML = `
+                <h2 class="text-lg font-bold mb-2">Série de Pagamentos ${seriesCount}</h2>
+                <label class="mb-2 w-1/2">Valor da Parcela (R$):</label>
+                <input type="number" class="payment-input w-1/3 mb-2 p-1 border rounded" placeholder="Ex: 1000">
+                <label class="mt-4 mb-2 w-1/2 bg-gray-200 p-1">(ou Entrada)</label>
+                <br>
+                <label class="mt-4 mb-2 w-1/2">Número de Parcelas:</label>
+                <input type="number" class="period-input w-1/3 mb-2 p-1 border rounded" placeholder="Ex: 12">
+                <br>
+                <label class="mt-4 mb-2 w-1/2">Taxa de Juros (% a.m.):</label>
+                <input type="number" class="interest-input w-1/3 mb-2 p-1 border rounded" value="0">
+                <label class="mt-4 mb-2 w-1/2 bg-gray-200 p-1">(se Entrada, é 0%)</label>
+                <br>
+                <label class="mt-4 mb-2 w-1/2">Primeiro Pagamento:</label>
+                <input id="dataPgto" type="date" class="date-input w-1/3 mb-2 p-1 border rounded">
+                <br>
+                <button class="remove-series bg-red-500 text-white px-4 py-1 rounded mt-1">Remover
+                    Série
+                </button>
+                <button class="calcula-parcela bg-yellow-500 text-white px-4 py-1 rounded mt-1">
+                    Calcula Valor da Parcela
+                </button>
+            `;
+
+            // Adiciona o botão de remover à nova série
+            newSeries.querySelector('.remove-series').addEventListener('click', removeSeries);
+            newSeries.querySelector('.calcula-parcela').addEventListener('click', calculaValorParcelaParaMeta);
+
+            container.append(newSeries);
+            newSeries.querySelector('.payment-input').focus()
+
+        }
+
+        // Função para remover uma série de pagamentos
+        function removeSeries(event) {
+            event.target.closest('.series-item').remove();
+            seriesCount--
+            updateSeriesNumbers();
+        }
+
+        // Atualizar a numeração das séries ao remover uma
+        function updateSeriesNumbers() {
+            const seriesItems = document.querySelectorAll('.series-item h2');
+            seriesItems.forEach((item, index) => {
+                item.textContent = `Série de Pagamentos ${index + 1}`;
+            });
+        }
+
+        // Função para calcular o valor presente de uma série
+        function calcularValorPresenteSerie(payment, periods, interest, monthDifference) {
+            if (interest === 0) {
+                // Caso a taxa de juros seja zero, o valor presente é simplesmente o valor dos pagamentos multiplicado pelo número de parcelas
+                return payment * periods;
+            }
+
+            // Ajustar o valor presente para levar em conta a diferença de tempo (desconto com base na menor data)
+            return payment * ((1 - Math.pow(1 + interest, -periods)) / interest) / Math.pow(1 + interest, monthDifference);
+        }
+
+        // Função para calcular a diferença em meses entre duas datas
+        function getMonthDifference(startDate, endDate) {
+            const yearsDifference = endDate.getUTCFullYear() - startDate.getUTCFullYear();
+            const monthsDifference = endDate.getUTCMonth() - startDate.getUTCMonth();
+            return yearsDifference * 12 + monthsDifference;
+        }
+
+        // Função para formatar a data como MM/YYYY
+        function formatarData(data) {
+            let mes = data.getMonth() + 1; // Os meses em JavaScript são de 0 a 11
+            let ano = data.getFullYear();
+
+            // Adiciona um zero à esquerda se o mês for menor que 10
+            if (mes < 10) {
+                mes = '0' + mes;
+            }
+
+            return `${mes}/${ano}`;
+        }
+
+        //Função para adicionar meses a uma data
+        function adicionarMeses(data, meses) {
+            let novaData = new Date(data);
+            novaData.setMonth(novaData.getMonth() + meses);
+            return novaData;
+        }
+
+        // Função para gerar a tabela de pagamentos mensais ordenados por mês
+        function generateTable(monthlyPayments, firstMonth) {
+            const tableBody = document.getElementById('table-body');
+            tableBody.innerHTML = '';  // Limpar a tabela antes de gerar
+
+            // Define os meses de referência
+            const keys = Object.keys(monthlyPayments).map(Number);
+            const minMonth = Math.min(...keys);
+            const maxMonth = Math.max(...keys);
+            const allMonths = [];
+            for (let i = minMonth; i <= maxMonth; i++) {
+                allMonths.push(i);
+            }
+
+            // Preencher a tabela com os meses ordenados e os valores
+            allMonths.forEach(month => {
+                const row = document.createElement('tr');
+                const refCell = document.createElement('td');
+                const monthCell = document.createElement('td');
+                const paymentCell = document.createElement('td');
+
+                refCell.textContent = month + 1;
+                monthCell.textContent = formatarData(adicionarMeses(firstMonth, month + 1));
+                paymentCell.textContent = (monthlyPayments[month] ?? 0).toFixed(2);
+
+                refCell.classList.add('border', 'px-4', 'py-2');
+                monthCell.classList.add('border', 'px-4', 'py-2');
+                paymentCell.classList.add('border', 'px-4', 'py-2');
+
+                row.appendChild(refCell);
+                row.appendChild(monthCell);
+                row.appendChild(paymentCell);
+                tableBody.appendChild(row);
+            });
+
+            document.getElementById('table-container').classList.remove('hidden');
+        }
+
+        // Função que calcula o valor presente total das séries cadastradas e mostra o resultado e a tabela de pagamentos
+        function calculatePresentValue() {
+            const paymentInputs = document.querySelectorAll('.payment-input');
+            const periodInputs = document.querySelectorAll('.period-input');
+            const interestInputs = document.querySelectorAll('.interest-input');
+            const dateInputs = document.querySelectorAll('.date-input');
+
+            let totalValue = 0;
+            let dates = [];
+            let monthlyPayments = {}; // Armazena os pagamentos mensais somados
+
+            // Coletar todas as datas de início das séries de pagamentos
+            dateInputs.forEach(input => {
+                let localDate = new Date(input.value)
+                //corrige a data, visto que é armazenada com GMT-3 (portanto no dia anterior)
+                dates.push(localDate.setHours(localDate.getHours() + 3))
+            });
+
+            // Encontrar a menor data entre todas as séries
+            const minDate = new Date(Math.min.apply(null, dates));
+
+            for (let i = 0; i < paymentInputs.length; i++) {
+                const payment = parseFloat(paymentInputs[i].value);
+                const periods = parseInt(periodInputs[i].value);
+                const interest = parseFloat(interestInputs[i].value) / 100;
+                const firstPaymentDate = new Date(dateInputs[i].value);
+
+                // Calcular a diferença de meses entre a data mínima e a data do primeiro pagamento
+                const monthDifference = getMonthDifference(minDate, firstPaymentDate) - 1;
+
+                // Somar os pagamentos mensais para geração da tabela de pagamentos
+                for (let n = 0; n < periods; n++) {
+                    const monthReference = monthDifference + n;
+                    if (!monthlyPayments[monthReference]) {
+                        monthlyPayments[monthReference] = 0;
+                    }
+                    monthlyPayments[monthReference] += payment;
+                }
+
+                // Calcular o valor presente ajustado para o tempo
+                const presentValue = calcularValorPresenteSerie(payment, periods, interest, monthDifference);
+                totalValue += presentValue;
+            }
+
+            document.getElementById('total-value').textContent = totalValue.toFixed(2);
+            document.getElementById('result').classList.remove('hidden');
+
+            // Gerar a tabela de pagamentos mensais
+            generateTable(monthlyPayments, minDate);
+        }
+
+
+        function calculaValorParcelaParaMeta() {
+
+            const valorMeta = parseFloat(document.getElementById('valorMeta').value)
+
+            const serieCalculada = event.target.closest('.series-item');
+
+            const seriesPagamento = document.querySelectorAll('.series-item');
+            const paymentInputs = document.querySelectorAll('.payment-input');
+            const periodInputs = document.querySelectorAll('.period-input');
+            const interestInputs = document.querySelectorAll('.interest-input');
+            const dateInputs = document.querySelectorAll('.date-input');
+
+            let totalValue = 0;
+            let dates = [];
+            let monthlyPayments = {}; // Armazena os pagamentos mensais somados
+
+            // Coletar todas as datas de início das séries de pagamentos
+            dateInputs.forEach(input => {
+                let localDate = new Date(input.value)
+                //corrige a data, visto que é armazenada com GMT-3 (portanto no dia anterior)
+                dates.push(localDate.setHours(localDate.getHours() + 3))
+            });
+
+            // Encontrar a menor data entre todas as séries
+            const minDate = new Date(Math.min.apply(null, dates));
+
+            for (let i = 0; i < paymentInputs.length; i++) {
+                if (seriesPagamento[i] !== serieCalculada) {
+                    const payment = parseFloat(paymentInputs[i].value);
+                    const periods = parseInt(periodInputs[i].value);
+                    const interest = parseFloat(interestInputs[i].value) / 100;
+                    let firstPaymentDate = new Date(dateInputs[i].value);
+                    firstPaymentDate.setHours(firstPaymentDate.getHours() + 3)
+
+                    // Calcular a diferença de meses entre a data mínima e a data do primeiro pagamento
+                    const monthDifference = getMonthDifference(minDate, firstPaymentDate) - 1;
+
+                    // Somar os pagamentos mensais para geração da tabela de pagamentos
+                    for (let n = 0; n < periods; n++) {
+                        const monthReference = monthDifference + n;
+                        if (!monthlyPayments[monthReference]) {
+                            monthlyPayments[monthReference] = 0;
+                        }
+                        monthlyPayments[monthReference] += payment;
+                    }
+
+                    // Calcular o valor presente ajustado para o tempo
+                    const presentValue = calcularValorPresenteSerie(payment, periods, interest, monthDifference);
+                    totalValue += presentValue;
+                }
+            }
+
+            const vpRestante = valorMeta - totalValue
+
+            const periodo = parseInt(serieCalculada.querySelector('.period-input').value);
+            const juros = parseFloat(serieCalculada.querySelector('.interest-input').value) / 100;
+            const date = new Date(serieCalculada.querySelector('.date-input').value);
+            date.setHours(date.getHours() + 3)
+
+            const monthDifferenceMeta = getMonthDifference(minDate, date) - 1;
+
+            const vfRestante = vpRestante * (1 + juros) ** monthDifferenceMeta
+
+            let parcela = 0
+            if (juros == 0) {
+                parcela = vfRestante / periodo
+            } else {
+                parcela = vfRestante * juros / (1 - (1 / (1 + juros) ** periodo))
+            }
+
+            serieCalculada.querySelector('.payment-input').value = parcela.toFixed(2);
+
+            calculatePresentValue()
+        }
+
+        // Inicialmente, adiciona um card de série de pagamento
+        addNewSeries()
+        document.getElementById("dataPgto").valueAsDate = new Date();
+    </script>
+</body>
+
+</html>
